@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
-from ..models import Matching, LineItem, Product, User
+from ..models import Matching, LineItem, Product
 from typing import List
 import csv
 import io
-from ..deps import get_current_user, get_db
+from ..deps import get_db
 import requests
 
 router = APIRouter(prefix="/matchings", tags=["matchings"])
@@ -18,22 +18,22 @@ def get_db():
         db.close()
 
 @router.post("/", status_code=201)
-def store_matching(matching: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def store_matching(matching: dict, db: Session = Depends(get_db)):
     # Assume matching dict contains line_item_id, product_id, user_confirmed, user_adjusted_fields
-    m = Matching(**matching, user_id=user.id)
+    m = Matching(**matching)
     db.add(m)
     db.commit()
     db.refresh(m)
     return {"message": "Matching stored", "matching_id": m.id}
 
 @router.get("/", response_model=List[dict])
-def get_matchings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    matchings = db.query(Matching).filter(Matching.user_id == user.id).all()
+def get_matchings(db: Session = Depends(get_db)):
+    matchings = db.query(Matching).all()
     return [{"id": m.id, "line_item_id": m.line_item_id, "product_id": m.product_id, "user_confirmed": m.user_confirmed, "matched_at": m.matched_at, "user_adjusted_fields": m.user_adjusted_fields} for m in matchings]
 
 @router.get("/download_csv")
-def download_matchings_csv(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    matchings = db.query(Matching).filter(Matching.user_id == user.id).all()
+def download_matchings_csv(db: Session = Depends(get_db)):
+    matchings = db.query(Matching).all()
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["id", "line_item_id", "product_id", "user_confirmed", "matched_at", "user_adjusted_fields"])
@@ -44,7 +44,7 @@ def download_matchings_csv(db: Session = Depends(get_db), user: User = Depends(g
     return response
 
 @router.post("/external-batch-match")
-def external_batch_match(queries: list, user: User = Depends(get_current_user)):
+def external_batch_match(queries: list):
     """
     Accepts a list of query strings, sends them to the external batch matching API, and returns the results.
     """

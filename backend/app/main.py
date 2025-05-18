@@ -1,13 +1,21 @@
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from .deps import get_db, get_password_hash, verify_password, get_current_user
+from .deps import get_db, get_password_hash, verify_password
 from sqlalchemy.orm import Session
 from .database import init_db
 from .models import User
 import secrets
 from .api import documents_router, products_router, matchings_router
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify ["http://localhost:3000"] for more security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def on_startup():
@@ -24,9 +32,9 @@ def register(username: str, email: str, password: str, db: Session = Depends(get
     return {"message": "User registered successfully"}
 
 @app.post("/login")
-def login(credentials: HTTPBasicCredentials = Depends(get_db), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == credentials.username).first()
-    if not user or not verify_password(credentials.password, user.password_hash):
+def login(credentials: dict, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == credentials["username"]).first()
+    if not user or not verify_password(credentials["password"], user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     return {"message": "Login successful", "username": user.username, "email": user.email}
 
@@ -34,6 +42,6 @@ def login(credentials: HTTPBasicCredentials = Depends(get_db), db: Session = Dep
 def read_root():
     return {"message": "Endeavor FDE Takehome API is running."}
 
-app.include_router(documents_router, dependencies=[Depends(get_current_user)])
-app.include_router(products_router, dependencies=[Depends(get_current_user)])
-app.include_router(matchings_router, dependencies=[Depends(get_current_user)]) 
+app.include_router(documents_router)
+app.include_router(products_router)
+app.include_router(matchings_router) 
