@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, JSON, Date, Float
 from sqlalchemy.orm import relationship, declarative_base
-from datetime import datetime
+from datetime import datetime, date
 
 Base = declarative_base()
 
@@ -22,6 +22,7 @@ class Document(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     user = relationship('User', back_populates='documents')
     line_items = relationship('LineItem', back_populates='document')
+    purchase_order = relationship('PurchaseOrder', back_populates='document', uselist=False)
 
 class LineItem(Base):
     __tablename__ = 'line_items'
@@ -29,6 +30,8 @@ class LineItem(Base):
     document_id = Column(Integer, ForeignKey('documents.id'))
     description = Column(Text, nullable=False)
     quantity = Column(Integer)
+    uom = Column(String)
+    price = Column(Float)
     document = relationship('Document', back_populates='line_items')
     matchings = relationship('Matching', back_populates='line_item')
 
@@ -52,4 +55,12 @@ class Matching(Base):
     user_adjusted_fields = Column(JSON, nullable=True)
     line_item = relationship('LineItem', back_populates='matchings')
     product = relationship('Product', back_populates='matchings')
-    user = relationship('User', back_populates='matchings') 
+    user = relationship('User', back_populates='matchings')
+
+class PurchaseOrder(Base):
+    __tablename__ = 'purchase_orders'
+    id = Column(Integer, primary_key=True, index=True)  # Request ID
+    progress = Column(String, nullable=False, default='processing')  # processing, review, finalized, failed
+    date = Column(Date, default=date.today)
+    document_id = Column(Integer, ForeignKey('documents.id'), nullable=False)
+    document = relationship('Document', back_populates='purchase_order') 

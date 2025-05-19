@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from .database import init_db
 from .models import User
 import secrets
-from .api import documents_router, products_router, matchings_router
+from .api import documents_router, products_router, matchings_router, purchase_orders_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -44,4 +44,5 @@ def read_root():
 
 app.include_router(documents_router)
 app.include_router(products_router)
-app.include_router(matchings_router) 
+app.include_router(matchings_router)
+app.include_router(purchase_orders_router) 

@@ -1,7 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
-from ..models import Document
+from ..models import Document, PurchaseOrder, LineItem
 from fastapi import status
 from typing import List
 from datetime import datetime
@@ -59,6 +59,47 @@ def list_documents(db: Session = Depends(get_db)):
     documents = db.query(Document).all()
     return [{"id": d.id, "filename": d.filename, "upload_time": d.upload_time} for d in documents]
 
+@router.get("/{document_id}/line_items", response_model=List[dict])
+def get_line_items_for_document(document_id: int, db: Session = Depends(get_db)):
+    items = db.query(LineItem).filter(LineItem.document_id == document_id).all()
+    return [
+        {
+            "id": item.id,
+            "description": item.description,
+            "quantity": item.quantity,
+            "uom": getattr(item, "uom", None),
+            "price": getattr(item, "price", None),
+            # Add other fields as needed
+        }
+        for item in items
+    ]
+
+@router.post("/{document_id}/line_items", response_model=List[dict])
+def save_line_items_for_document(document_id: int, items: list = Body(...), db: Session = Depends(get_db)):
+    # Delete existing line items for this document
+    db.query(LineItem).filter(LineItem.document_id == document_id).delete()
+    # Add new line items
+    saved = []
+    for item in items:
+        li = LineItem(
+            document_id=document_id,
+            description=item.get("description", ""),
+            quantity=item.get("quantity"),
+            uom=item.get("uom"),
+            price=item.get("price"),
+        )
+        db.add(li)
+        db.flush()  # get id
+        saved.append({
+            "id": li.id,
+            "description": li.description,
+            "quantity": li.quantity,
+            "uom": li.uom,
+            "price": li.price,
+        })
+    db.commit()
+    return saved
+
 # Extraction API error response example:
 # {
 #   "detail": [
@@ -92,4 +133,78 @@ def list_documents(db: Session = Depends(get_db)):
 #     ],
 #     ...
 #   }
-# } 
+# }
+
+# --- PurchaseOrder Endpoints ---
+from fastapi import APIRouter as FastAPIRouter
+po_router = FastAPIRouter(prefix="/purchase_orders", tags=["purchase_orders"])
+
+@po_router.get("/", response_model=List[dict])
+def list_purchase_orders(db: Session = Depends(get_db)):
+    orders = db.query(PurchaseOrder).all()
+    return [
+        {
+            "id": o.id,
+            "progress": o.progress,
+            "date": o.date,
+            "document_id": o.document_id,
+            "document_filename": o.document.filename if o.document else None
+        }
+        for o in orders
+    ]
+
+@po_router.get("/{order_id}", response_model=dict)
+def get_purchase_order(order_id: int, db: Session = Depends(get_db)):
+    o = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    return {
+        "id": o.id,
+        "progress": o.progress,
+        "date": o.date,
+        "document_id": o.document_id,
+        "document_filename": o.document.filename if o.document else None
+    }
+
+@po_router.post("/", status_code=201)
+def create_purchase_order(
+    data: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    # Convert date string to Python date object
+    date_val = data.get("date")
+    if isinstance(date_val, str):
+        date_val = datetime.strptime(date_val, "%Y-%m-%d").date()
+    po = PurchaseOrder(
+        progress=data.get("progress", "processing"),
+        date=date_val,
+        document_id=data.get("document_id"),
+    )
+    db.add(po)
+    db.commit()
+    db.refresh(po)
+    return {
+        "id": po.id,
+        "progress": po.progress,
+        "date": po.date,
+        "document_id": po.document_id,
+    }
+
+@po_router.get("/next_id", response_model=int)
+def get_next_purchase_order_id(db: Session = Depends(get_db)):
+    max_id = db.query(PurchaseOrder.id).order_by(PurchaseOrder.id.desc()).first()
+    return (max_id[0] + 1) if max_id else 1
+
+@po_router.delete("/{order_id}", status_code=204)
+def delete_purchase_order(order_id: int, db: Session = Depends(get_db)):
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    # Delete line items
+    if po.document_id:
+        db.query(LineItem).filter(LineItem.document_id == po.document_id).delete()
+        # Delete document
+        db.query(Document).filter(Document.id == po.document_id).delete()
+    db.delete(po)
+    db.commit()
+    return 

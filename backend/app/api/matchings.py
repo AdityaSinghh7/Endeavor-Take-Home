@@ -7,6 +7,7 @@ import csv
 import io
 from ..deps import get_db
 import requests
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/matchings", tags=["matchings"])
 
@@ -43,13 +44,16 @@ def download_matchings_csv(db: Session = Depends(get_db)):
     response.headers["Content-Disposition"] = "attachment; filename=matchings.csv"
     return response
 
+class BatchMatchRequest(BaseModel):
+    queries: List[str]
+
 @router.post("/external-batch-match")
-def external_batch_match(queries: list):
+def external_batch_match(request: BatchMatchRequest):
     """
     Accepts a list of query strings, sends them to the external batch matching API, and returns the results.
     """
     url = "https://endeavor-interview-api-gzwki.ondigitalocean.app/match/batch"
-    payload = {"queries": queries}
+    payload = {"queries": request.queries}
     try:
         response = requests.post(url, json=payload)
         response.raise_for_status()
